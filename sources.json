@@ -1,0 +1,28 @@
+{
+  "sources": {
+    "CO": {
+      "official": [
+        "https://www.funcionpublica.gov.co",
+        "https://www.dian.gov.co",
+        "https://www.ramajudicial.gov.co",
+        "https://www.cortesuprema.gov.co",
+        "https://www.corteconstitucional.gov.co"
+      ]
+    },
+    "CA": {
+      "official": [
+        "https://laws-lois.justice.gc.ca",
+        "https://www.canada.ca",
+        "https://www.canlii.org"
+      ]
+    },
+    "US": {
+      "official": [
+        "https://www.congress.gov",
+        "https://www.irs.gov",
+        "https://www.supremecourt.gov",
+        "https://www.law.cornell.edu"
+      ]
+    }
+  }
+}

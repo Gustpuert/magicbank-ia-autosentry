@@ -1,0 +1,9 @@
+{
+  "notifications": {
+    "email": {
+      "enabled": true,
+      "recipient": "magicbankia@gmail.com",
+      "trigger": "high_relevance"
+    }
+  }
+}
