@@ -1,0 +1,16 @@
+{
+  "jurisdictions": [
+    {
+      "code": "CO",
+      "name": "Colombia"
+    },
+    {
+      "code": "CA",
+      "name": "Canadá"
+    },
+    {
+      "code": "US",
+      "name": "Estados Unidos"
+    }
+  ]
+}
