@@ -1,0 +1,31 @@
+name: MagicBank IA AutoSentry
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  autosentry:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Instalar dependencias básicas
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: 🚀 Ejecutar AutoSentry
+        env:
+          MAIL_SENDER: magicbankia@gmail.com
+          MAIL_RECEIVER: magicbankia@gmail.com
+          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
+        run: |
+          python main.py
