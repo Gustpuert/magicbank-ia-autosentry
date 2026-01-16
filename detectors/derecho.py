@@ -1,15 +1,17 @@
 from detectors.base import BaseDetector
 from core.event import DetectionEvent
 
+
 class DerechoDetector(BaseDetector):
     def detect(self):
         events = []
 
-        # Aquí se conectará scraping / API oficial
-        # Por ahora dejamos estructura ejemplo realista
+        sources = [
+            "https://www.funcionpublica.gov.co",
+            "https://www.senado.gov.co"
+        ]
 
-        for source in self.sources:
-            # Simulación de detección
+        for source in sources:
             event = DetectionEvent(
                 faculty="derecho",
                 jurisdiction="CO",
