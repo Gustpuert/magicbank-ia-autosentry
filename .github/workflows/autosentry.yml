@@ -2,7 +2,6 @@ name: MagicBank IA AutoSentry
 
 on:
   schedule:
-    # Ejecuta cada 6 horas
     - cron: "0 */6 * * *"
   workflow_dispatch:
 
@@ -28,7 +27,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 🔧 Configurar entorno de ejecución
+      - name: 🔧 Configurar entorno
         run: |
           echo "PYTHONPATH=$(pwd)" >> $GITHUB_ENV
 
@@ -39,4 +38,4 @@ jobs:
           MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
           TZ: UTC
         run: |
-          python main.py
+          python -m magicbank_ia_autosentry
