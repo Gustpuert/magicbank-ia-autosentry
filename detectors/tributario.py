@@ -1,13 +1,18 @@
 from detectors.base import BaseDetector
 from core.event import DetectionEvent
 
+
 class TributarioDetector(BaseDetector):
     def detect(self):
         events = []
 
-        for source in self.sources:
+        sources = [
+            "https://www.dian.gov.co"
+        ]
+
+        for source in sources:
             event = DetectionEvent(
-                faculty="contaduria",
+                faculty="tributario",
                 jurisdiction="CO",
                 source_url=source,
                 title="Actualización tributaria relevante",
