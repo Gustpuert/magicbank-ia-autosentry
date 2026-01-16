@@ -1,10 +1,10 @@
 class BaseDetector:
-    def __init__(self, sources):
-        self.sources = sources
+    """
+    Clase base para todos los detectores MagicBank IA AutoSentry.
+
+    Cada detector concreto debe implementar el método detect()
+    y devolver una lista de objetos DetectionEvent.
+    """
 
     def detect(self):
-        """
-        Debe ser implementado por cada detector específico.
-        Debe devolver una lista de DetectionEvent.
-        """
         raise NotImplementedError("Detector no implementado")
