@@ -1,11 +1,17 @@
 from detectors.base import BaseDetector
 from core.event import DetectionEvent
 
+
 class SoftwareDetector(BaseDetector):
     def detect(self):
         events = []
 
-        for source in self.sources:
+        sources = [
+            "https://github.blog",
+            "https://python.org"
+        ]
+
+        for source in sources:
             event = DetectionEvent(
                 faculty="software",
                 jurisdiction="GLOBAL",
