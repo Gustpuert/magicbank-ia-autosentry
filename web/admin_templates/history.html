@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Magic Bank — Historial Académico</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f4f6f8;
+        }
+        h1 {
+            color: #1b3a57;
+        }
+        .box {
+            background: white;
+            padding: 20px;
+            border-radius: 6px;
+            max-width: 600px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #1b3a57;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #274b6d;
+        }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h1>Historial Académico</h1>
+    <p>
+        Desde aquí puede generar el historial oficial de actualizaciones
+        académicas registradas en Magic Bank.
+    </p>
+
+    <form action="/admin/history/export" method="get">
+        <button type="submit">Generar PDF</button>
+    </form>
+</div>
+
+</body>
+</html>
