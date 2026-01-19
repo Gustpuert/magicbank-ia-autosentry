@@ -1,18 +1,47 @@
 import json
 from pathlib import Path
+from datetime import datetime
 
-REGISTRY_FILE = Path("registry/events.json")
+# Archivo de histórico
+REGISTRY_FILE = Path("registry/history.json")
 
-def store_event(event):
+
+def _init_registry():
+    """Crea el archivo de historial si no existe"""
     if not REGISTRY_FILE.exists():
         REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(REGISTRY_FILE, "w") as f:
-            json.dump({"events": []}, f, indent=2)
+        with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "metadata": {
+                        "created_at": datetime.utcnow().isoformat(),
+                        "system": "MagicBank IA AutoSentry",
+                        "version": "1.0"
+                    },
+                    "events": []
+                },
+                f,
+                indent=2,
+                ensure_ascii=False
+            )
 
-    with open(REGISTRY_FILE, "r") as f:
+
+def store_event(event):
+    """
+    Guarda un evento detectado por cualquier detector.
+    El evento debe exponer un método to_dict()
+    """
+    _init_registry()
+
+    with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    data["events"].append(event.to_dict())
+    record = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "event": event.to_dict()
+    }
 
-    with open(REGISTRY_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    data["events"].append(record)
+
+    with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
