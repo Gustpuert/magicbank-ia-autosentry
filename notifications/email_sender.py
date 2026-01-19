@@ -1,34 +1,31 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import os
 
-from notifications.mail_config import (
-    SMTP_SERVER,
-    SMTP_PORT,
-    EMAIL_REMITENTE,
-    EMAIL_PASSWORD,
-    es_destino_valido
-)
 
-def enviar_correo(destinatario: str, asunto: str, mensaje: str):
-    if not es_destino_valido(destinatario):
-        raise ValueError("❌ Destinatario NO autorizado")
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+
+MAIL_USER = os.getenv("MAIL_USER")
+MAIL_PASSWORD = os.getenv("MAIL_APP_PASSWORD")
+MAIL_TO = os.getenv("MAIL_RECEIVER")
+
+
+def enviar_correo(destinatario, asunto, mensaje):
+    if not MAIL_USER or not MAIL_PASSWORD:
+        raise RuntimeError("Credenciales de correo no configuradas")
 
     msg = MIMEMultipart()
-    msg["From"] = EMAIL_REMITENTE
+    msg["From"] = MAIL_USER
     msg["To"] = destinatario
     msg["Subject"] = asunto
 
-    msg.attach(MIMEText(mensaje, "plain"))
+    msg.attach(MIMEText(mensaje, "plain", "utf-8"))
 
-    try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
-            server.send_message(msg)
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(MAIL_USER, MAIL_PASSWORD)
+        server.send_message(msg)
 
-        print(f"📧 Correo enviado correctamente a {destinatario}")
-
-    except Exception as e:
-        print("❌ Error enviando correo:", str(e))
-        raise
+    print("📧 Correo enviado correctamente")
