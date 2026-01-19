@@ -7,11 +7,8 @@ HISTORY_FILE = Path("registry/history.json")
 
 def load_authorized_context(area: str | None = None) -> str:
     """
-    Devuelve el contexto autorizado para los tutores IA.
-
-    - Lee el historial validado
-    - Filtra por área si se indica
-    - Devuelve texto limpio y usable
+    Devuelve el contexto oficial autorizado para los tutores IA.
+    No interpreta, no modifica, no decide.
     """
 
     if not HISTORY_FILE.exists():
@@ -23,11 +20,11 @@ def load_authorized_context(area: str | None = None) -> str:
     events = data.get("events", [])
 
     if not events:
-        return "No hay actualizaciones oficiales registradas."
+        return "No existen actualizaciones oficiales registradas."
 
-    lines = []
-    lines.append("ACTUALIZACIONES OFICIALES CONFIRMADAS\n")
-    lines.append(f"Generado: {datetime.utcnow().isoformat()} UTC\n")
+    output = []
+    output.append("ACTUALIZACIONES OFICIALES CONFIRMADAS")
+    output.append(f"Fecha de generación: {datetime.utcnow().isoformat()} UTC\n")
 
     for entry in events:
         event = entry.get("event", {})
@@ -35,14 +32,14 @@ def load_authorized_context(area: str | None = None) -> str:
         if area and event.get("rama") != area:
             continue
 
-        lines.append(
-            f"- [{event.get('pais')}] "
-            f"{event.get('entidad')} | "
-            f"{event.get('rama')} | "
-            f"{event.get('fuente')}"
+        output.append(
+            f"- País: {event.get('pais')}\n"
+            f"  Entidad: {event.get('entidad')}\n"
+            f"  Rama: {event.get('rama')}\n"
+            f"  Fuente: {event.get('fuente')}\n"
         )
 
-    if len(lines) <= 2:
-        return "No hay actualizaciones relevantes para esta área."
+    if len(output) <= 2:
+        return "No existen actualizaciones relevantes para esta área."
 
-    return "\n".join(lines)
+    return "\n".join(output)
