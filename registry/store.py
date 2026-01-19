@@ -2,46 +2,49 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# Archivo de histórico
-REGISTRY_FILE = Path("registry/history.json")
+HISTORY_FILE = Path("registry/history.json")
 
 
 def _init_registry():
-    """Crea el archivo de historial si no existe"""
-    if not REGISTRY_FILE.exists():
-        REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "metadata": {
-                        "created_at": datetime.utcnow().isoformat(),
-                        "system": "MagicBank IA AutoSentry",
-                        "version": "1.0"
-                    },
-                    "events": []
-                },
-                f,
-                indent=2,
-                ensure_ascii=False
-            )
+    if not HISTORY_FILE.exists():
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump({"events": []}, f, indent=2)
 
 
-def store_event(event):
-    """
-    Guarda un evento detectado por cualquier detector.
-    El evento debe exponer un método to_dict()
-    """
+def load_history():
     _init_registry()
+    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-    with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
 
-    record = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "event": event.to_dict()
+def save_history(data):
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def has_changes(new_events):
+    history = load_history()
+    previous = history.get("events", [])
+
+    # Convertir a set para comparación real
+    previous_set = {json.dumps(e, sort_keys=True) for e in previous}
+    current_set = {json.dumps(e, sort_keys=True) for e in new_events}
+
+    return current_set != previous_set
+
+
+def store_if_changed(new_events):
+    if not new_events:
+        return False
+
+    if not has_changes(new_events):
+        return False
+
+    data = {
+        "last_update": datetime.utcnow().isoformat(),
+        "events": new_events
     }
 
-    data["events"].append(record)
-
-    with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    save_history(data)
+    return True
