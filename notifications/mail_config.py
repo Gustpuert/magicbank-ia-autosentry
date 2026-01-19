@@ -1,17 +1,21 @@
 import os
 
-# ================================
+# ==========================
 # CONFIGURACIÓN DE CORREO
-# ================================
+# ==========================
 
-MAIL_HOST = "smtp.gmail.com"
-MAIL_PORT = 587
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
 
-MAIL_USER = os.getenv("MAIL_APP_USER")
-MAIL_PASSWORD = os.getenv("MAIL_APP_PASSWORD")
+EMAIL_REMITENTE = os.getenv("MAIL_USER")
+EMAIL_PASSWORD = os.getenv("MAIL_APP_PASSWORD")
 
-MAIL_FROM = MAIL_USER
-MAIL_TO = os.getenv("MAIL_TO", MAIL_USER)
+# Lista blanca de destinatarios permitidos
+DESTINATARIOS_AUTORIZADOS = [
+    "tucorreo@gmail.com",
+    "alertas@tudominio.com"
+]
 
-if not MAIL_USER or not MAIL_PASSWORD:
-    raise RuntimeError("❌ Variables de entorno MAIL_APP_USER o MAIL_APP_PASSWORD no definidas")
+def es_destino_valido(email: str) -> bool:
+    """Evita envíos accidentales o no autorizados"""
+    return email in DESTINATARIOS_AUTORIZADOS
