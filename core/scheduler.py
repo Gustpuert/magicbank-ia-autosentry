@@ -1,46 +1,51 @@
-from core.validator import validate_event
 from registry.store import store_if_changed
 from notifications.email_sender import enviar_correo
 from datetime import datetime
 
 
 def run_scheduler(detectors):
-    eventos_validos = []
+    resultados = []
 
     for detector in detectors:
         try:
-            resultados = detector.detect()
-
-            for evento in resultados:
-                validado = validate_event(evento)
-                if validado:
-                    eventos_validos.append(validado)
-
+            detecciones = detector.detect()
+            if detecciones:
+                resultados.extend(detecciones)
         except Exception as e:
             print(f"[ERROR] Detector {detector.__class__.__name__}: {e}")
 
-    # Solo si hay cambios reales se guarda y se notifica
-    if store_if_changed(eventos_validos):
-        resumen = generar_resumen(eventos_validos)
-        enviar_correo(
-            destinatario="tucorreo@gmail.com",
-            asunto="📡 MagicBank – Actualización oficial detectada",
-            mensaje=resumen
-        )
+    if not resultados:
+        print("[INFO] No hay cambios detectados.")
+        return
 
-    return eventos_validos
+    # Guardar solo si hay cambios reales
+    changed = store_if_changed(resultados)
+
+    if not changed:
+        print("[INFO] No hay cambios nuevos. No se envía correo.")
+        return
+
+    resumen = generar_resumen(resultados)
+
+    enviar_correo(
+        destinatario="magicbankia@gmail.com",
+        asunto="📡 MagicBank – Actualización oficial detectada",
+        mensaje=resumen
+    )
+
+    print("[OK] Actualización registrada y correo enviado.")
 
 
-def generar_resumen(eventos):
+def generar_resumen(resultados):
     salida = []
-    salida.append("Se detectaron actualizaciones oficiales:\n")
+    salida.append("📘 ACTUALIZACIÓN OFICIAL DETECTADA\n")
 
-    for e in eventos:
+    for r in resultados:
         salida.append(
-            f"- {e['pais']} | {e['rama']} | {e['entidad']} | {e['fuente']}"
+            f"- {r.get('pais')} | {r.get('rama')} | {r.get('entidad')}"
         )
 
-    salida.append("\nFuente: MagicBank AutoSentry")
-    salida.append(f"Fecha UTC: {datetime.utcnow().isoformat()}")
+    salida.append("\nSistema: MagicBank IA AutoSentry")
+    salida.append(f"Fecha: {datetime.utcnow().isoformat()} UTC")
 
     return "\n".join(salida)
