@@ -1,19 +1,25 @@
 import json
 from pathlib import Path
 from datetime import datetime
+import hashlib
 
-REGISTRY_FILE = Path("registry/history.json")
+REGISTRY_FILE = Path("registry/events.json")
 
 
-def store_if_changed(events: list) -> bool:
+def _hash_event(event: dict) -> str:
+    """Genera un hash único del evento para evitar duplicados"""
+    raw = json.dumps(event, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def store_if_changed(event: dict) -> bool:
     """
-    Guarda los eventos SOLO si hay cambios nuevos.
-    Devuelve True si hubo cambios, False si no.
+    Guarda el evento solo si es nuevo.
+    Retorna True si fue almacenado, False si ya existía.
     """
 
     REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    # Si no existe, crear archivo base
     if not REGISTRY_FILE.exists():
         with open(REGISTRY_FILE, "w") as f:
             json.dump({"events": []}, f, indent=2)
@@ -21,14 +27,16 @@ def store_if_changed(events: list) -> bool:
     with open(REGISTRY_FILE, "r") as f:
         data = json.load(f)
 
-    previous_events = data.get("events", [])
+    event_hash = _hash_event(event)
 
-    # Comparación simple: contenido exacto
-    if events == previous_events:
-        return False
+    for e in data["events"]:
+        if e.get("hash") == event_hash:
+            return False  # Ya existe
 
-    data["events"] = events
-    data["last_update"] = datetime.utcnow().isoformat()
+    event["hash"] = event_hash
+    event["stored_at"] = datetime.utcnow().isoformat()
+
+    data["events"].append(event)
 
     with open(REGISTRY_FILE, "w") as f:
         json.dump(data, f, indent=2)
