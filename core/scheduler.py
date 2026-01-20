@@ -4,48 +4,36 @@ from datetime import datetime
 
 
 def run_scheduler(detectors):
-    resultados = []
+    nuevos = []
 
     for detector in detectors:
         try:
-            detecciones = detector.detect()
-            if detecciones:
-                resultados.extend(detecciones)
+            resultados = detector.detect()
+            for r in resultados:
+                if store_if_changed(r):
+                    nuevos.append(r)
         except Exception as e:
-            print(f"[ERROR] Detector {detector.__class__.__name__}: {e}")
+            print(f"[ERROR] {detector.__class__.__name__}: {e}")
 
-    if not resultados:
-        print("[INFO] No hay cambios detectados.")
-        return
-
-    # Guardar solo si hay cambios reales
-    changed = store_if_changed(resultados)
-
-    if not changed:
-        print("[INFO] No hay cambios nuevos. No se envía correo.")
-        return
-
-    resumen = generar_resumen(resultados)
-
-    enviar_correo(
-        destinatario="magicbankia@gmail.com",
-        asunto="📡 MagicBank – Actualización oficial detectada",
-        mensaje=resumen
-    )
-
-    print("[OK] Actualización registrada y correo enviado.")
+    if nuevos:
+        resumen = generar_resumen(nuevos)
+        enviar_correo(
+            destinatario="magicbankia@gmail.com",
+            asunto="📡 MagicBank — Actualización Oficial Detectada",
+            mensaje=resumen
+        )
 
 
 def generar_resumen(resultados):
-    salida = []
-    salida.append("📘 ACTUALIZACIÓN OFICIAL DETECTADA\n")
+    texto = []
+    texto.append("📘 ACTUALIZACIONES OFICIALES DETECTADAS\n")
 
     for r in resultados:
-        salida.append(
+        texto.append(
             f"- {r.get('pais')} | {r.get('rama')} | {r.get('entidad')}"
         )
 
-    salida.append("\nSistema: MagicBank IA AutoSentry")
-    salida.append(f"Fecha: {datetime.utcnow().isoformat()} UTC")
+    texto.append("\nSistema MagicBank IA")
+    texto.append(f"Fecha UTC: {datetime.utcnow().isoformat()}")
 
-    return "\n".join(salida)
+    return "\n".join(texto)
