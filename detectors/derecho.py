@@ -208,3 +208,6 @@ class DerechoDetector(BaseDetector):
             document_type="Norma jurídica",
             publication_date=datetime.utcnow().date().isoformat()
         )
+if __name__ == "__main__":
+    detector = DerechoDetector()
+    detector.detect()
