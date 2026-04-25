@@ -14,8 +14,8 @@ class DerechoDetector(BaseDetector):
         print("[INFO] DerechoDetector iniciado")
 
         events += self.funcion_publica()
-        events += self.diario_oficial()
         events += self.corte_constitucional()
+        events += self.diario_oficial()
         events += self.senado()
         events += self.dian()
 
@@ -39,45 +39,62 @@ class DerechoDetector(BaseDetector):
     # =========================
     def funcion_publica(self):
         url = "https://www.funcionpublica.gov.co/eva/es/gestornormativo"
-        return self.parse_source(url, "CO", "derecho")
+        html = self.fetch(url)
+        events = []
 
+        if not html:
+            return events
 
-    # =========================
-    # 📰 DIARIO OFICIAL
-    # =========================
-    def diario_oficial(self):
-        url = "https://www.imprenta.gov.co/gacetap/gaceta.mostrar_gaceta?p_tipo=01&p_numero="
-        return self.parse_source(url, "CO", "derecho")
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.select("div.views-row")
+
+        for row in rows[:20]:
+            title_tag = row.select_one("h3, h2, a")
+
+            if not title_tag:
+                continue
+
+            title = title_tag.get_text(strip=True)
+
+            if self.is_legal_relevant(title):
+                events.append(self.build_event(title, url, "derecho"))
+
+        return events
 
 
     # =========================
     # ⚖️ CORTE CONSTITUCIONAL
     # =========================
     def corte_constitucional(self):
-        url = "https://www.corteconstitucional.gov.co"
-        return self.parse_source(url, "CO", "derecho")
+        url = "https://www.corteconstitucional.gov.co/relatoria/"
+        html = self.fetch(url)
+        events = []
+
+        if not html:
+            return events
+
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.select("table tr")
+
+        for row in rows[:20]:
+            cols = row.find_all("td")
+
+            if len(cols) < 2:
+                continue
+
+            title = cols[1].get_text(strip=True)
+
+            if self.is_legal_relevant(title):
+                events.append(self.build_event(title, url, "derecho"))
+
+        return events
 
 
     # =========================
-    # 🏛️ SENADO
+    # 📰 DIARIO OFICIAL
     # =========================
-    def senado(self):
-        url = "https://www.senado.gov.co"
-        return self.parse_source(url, "CO", "derecho")
-
-
-    # =========================
-    # 💰 DIAN
-    # =========================
-    def dian(self):
-        url = "https://www.dian.gov.co"
-        return self.parse_source(url, "CO", "tributario")
-
-
-    # =========================
-    # 🔧 PARSER BASE CONTROLADO
-    # =========================
-    def parse_source(self, url, jurisdiction, faculty):
+    def diario_oficial(self):
+        url = "https://www.imprenta.gov.co"
         html = self.fetch(url)
         events = []
 
@@ -86,20 +103,70 @@ class DerechoDetector(BaseDetector):
 
         soup = BeautifulSoup(html, "html.parser")
 
-        for tag in soup.select("a")[:40]:
-            title = tag.get_text(strip=True)
+        for tag in soup.find_all(["a", "p", "span"])[:50]:
+            text = tag.get_text(strip=True)
+
+            if not text:
+                continue
+
+            if self.is_legal_relevant(text):
+                events.append(self.build_event(text, url, "derecho"))
+
+        return events
+
+
+    # =========================
+    # 🏛️ SENADO
+    # =========================
+    def senado(self):
+        url = "https://www.senado.gov.co/index.php/el-senado/noticias"
+        html = self.fetch(url)
+        events = []
+
+        if not html:
+            return events
+
+        soup = BeautifulSoup(html, "html.parser")
+        articles = soup.select("article, div.views-row")
+
+        for article in articles[:20]:
+            title_tag = article.find("a")
+
+            if not title_tag:
+                continue
+
+            title = title_tag.get_text(strip=True)
 
             if self.is_legal_relevant(title):
-                events.append(
-                    DetectionEvent(
-                        faculty=faculty,
-                        jurisdiction=jurisdiction,
-                        source_url=url,
-                        title=title,
-                        document_type="Norma jurídica",
-                        publication_date=datetime.utcnow().date().isoformat()
-                    )
-                )
+                events.append(self.build_event(title, url, "derecho"))
+
+        return events
+
+
+    # =========================
+    # 💰 DIAN (TRIBUTARIO)
+    # =========================
+    def dian(self):
+        url = "https://www.dian.gov.co/Prensa/Paginas/Normatividad.aspx"
+        html = self.fetch(url)
+        events = []
+
+        if not html:
+            return events
+
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.select("table tr")
+
+        for row in rows[:20]:
+            cols = row.find_all("td")
+
+            if len(cols) < 2:
+                continue
+
+            title = cols[1].get_text(strip=True)
+
+            if self.is_legal_relevant(title):
+                events.append(self.build_event(title, url, "tributario"))
 
         return events
 
@@ -128,3 +195,17 @@ class DerechoDetector(BaseDetector):
         ]
 
         return any(k in title for k in keywords)
+
+
+    # =========================
+    # 🏗️ CREACIÓN DE EVENTO
+    # =========================
+    def build_event(self, title, source, faculty):
+        return DetectionEvent(
+            faculty=faculty,
+            jurisdiction="CO",
+            source_url=source,
+            title=title,
+            document_type="Norma jurídica",
+            publication_date=datetime.utcnow().date().isoformat()
+        )
