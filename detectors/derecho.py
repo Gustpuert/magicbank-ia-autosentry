@@ -1,6 +1,5 @@
 import requests
 from bs4 import BeautifulSoup
-import feedparser
 from datetime import datetime
 
 from detectors.base import BaseDetector
@@ -11,10 +10,19 @@ class DerechoDetector(BaseDetector):
 
     def detect(self):
         events = []
+
+        print("[INFO] DerechoDetector iniciado")
+
         events += self.funcion_publica()
+        events += self.diario_oficial()
+        events += self.corte_constitucional()
         events += self.senado()
-        events += self.rss()
+        events += self.dian()
+
+        print(f"[INFO] DerechoDetector encontró {len(events)} eventos")
+
         return events
+
 
     def fetch(self, url):
         try:
@@ -22,29 +30,54 @@ class DerechoDetector(BaseDetector):
             if r.status_code == 200:
                 return r.text
         except Exception as e:
-            print("[FETCH ERROR]", e)
+            print(f"[FETCH ERROR] {url}: {e}")
         return None
 
+
+    # =========================
+    # 🏛️ FUNCIÓN PÚBLICA
+    # =========================
     def funcion_publica(self):
-        url = "https://www.funcionpublica.gov.co"
-        html = self.fetch(url)
-        events = []
+        url = "https://www.funcionpublica.gov.co/eva/es/gestornormativo"
+        return self.parse_source(url, "CO", "derecho")
 
-        if not html:
-            return events
 
-        soup = BeautifulSoup(html, "html.parser")
+    # =========================
+    # 📰 DIARIO OFICIAL
+    # =========================
+    def diario_oficial(self):
+        url = "https://www.imprenta.gov.co/gacetap/gaceta.mostrar_gaceta?p_tipo=01&p_numero="
+        return self.parse_source(url, "CO", "derecho")
 
-        for a in soup.select("a")[:30]:
-            title = a.get_text(strip=True)
 
-            if self.is_legal(title):
-                events.append(self.build(title, url, "Norma"))
+    # =========================
+    # ⚖️ CORTE CONSTITUCIONAL
+    # =========================
+    def corte_constitucional(self):
+        url = "https://www.corteconstitucional.gov.co"
+        return self.parse_source(url, "CO", "derecho")
 
-        return events
 
+    # =========================
+    # 🏛️ SENADO
+    # =========================
     def senado(self):
         url = "https://www.senado.gov.co"
+        return self.parse_source(url, "CO", "derecho")
+
+
+    # =========================
+    # 💰 DIAN
+    # =========================
+    def dian(self):
+        url = "https://www.dian.gov.co"
+        return self.parse_source(url, "CO", "tributario")
+
+
+    # =========================
+    # 🔧 PARSER BASE CONTROLADO
+    # =========================
+    def parse_source(self, url, jurisdiction, faculty):
         html = self.fetch(url)
         events = []
 
@@ -53,51 +86,45 @@ class DerechoDetector(BaseDetector):
 
         soup = BeautifulSoup(html, "html.parser")
 
-        for a in soup.select("a")[:30]:
-            title = a.get_text(strip=True)
+        for tag in soup.select("a")[:40]:
+            title = tag.get_text(strip=True)
 
-            if self.is_legal(title):
-                events.append(self.build(title, url, "Proyecto"))
-
-        return events
-
-    def rss(self):
-        url = "https://www.funcionpublica.gov.co/rss"
-        events = []
-
-        try:
-            feed = feedparser.parse(url)
-
-            for e in feed.entries[:20]:
-                title = e.title
-
-                if self.is_legal(title):
-                    events.append(self.build(title, url, "Publicación"))
-
-        except Exception as e:
-            print("[RSS ERROR]", e)
+            if self.is_legal_relevant(title):
+                events.append(
+                    DetectionEvent(
+                        faculty=faculty,
+                        jurisdiction=jurisdiction,
+                        source_url=url,
+                        title=title,
+                        document_type="Norma jurídica",
+                        publication_date=datetime.utcnow().date().isoformat()
+                    )
+                )
 
         return events
 
-    def is_legal(self, title):
+
+    # =========================
+    # ⚖️ FILTRO JURÍDICO BASE
+    # =========================
+    def is_legal_relevant(self, title):
         if not title:
             return False
 
         title = title.lower()
 
         keywords = [
-            "ley", "decreto", "sentencia",
-            "reforma", "norma", "resolución"
+            "ley",
+            "decreto",
+            "sentencia",
+            "resolución",
+            "acuerdo",
+            "reforma",
+            "estatuto",
+            "código",
+            "reglamenta",
+            "tributario",
+            "constitucional"
         ]
 
         return any(k in title for k in keywords)
-
-    def build(self, title, source, doc_type):
-        return DetectionEvent(
-            faculty="derecho",
-            jurisdiction="CO",
-            source_url=source,
-            title=title,
-            document_type=doc_type,
-            publication_date=datetime.utcnow().date().isoformat()
-        )
