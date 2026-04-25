@@ -1,163 +1,113 @@
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import hashlib
+import json
+import os
 
 from detectors.base import BaseDetector
 from core.event import DetectionEvent
 
 
+HISTORY_FILE = "legal_history.json"
+
+
 class DerechoDetector(BaseDetector):
 
     def detect(self):
-        events = []
-
         print("[INFO] DerechoDetector iniciado")
 
+        history = self.load_history()
+
+        events = []
         events += self.funcion_publica()
         events += self.corte_constitucional()
-        events += self.diario_oficial()
         events += self.senado()
         events += self.dian()
 
-        print(f"[INFO] DerechoDetector encontró {len(events)} eventos")
+        events = self.filter_relevant(events)
+        events = self.remove_duplicates(events)
 
-        return events
+        new_events = []
+        for e in events:
+            key = self.hash_event(e)
+
+            if key not in history:
+                history.add(key)
+                new_events.append(e)
+
+        self.save_history(history)
+
+        print(f"[INFO] Nuevos eventos: {len(new_events)}")
+
+        return new_events
 
 
+    # =========================
+    # FETCH
+    # =========================
     def fetch(self, url):
         try:
-            r = requests.get(url, timeout=10)
+            headers = {"User-Agent": "Mozilla/5.0"}
+            r = requests.get(url, headers=headers, timeout=10)
             if r.status_code == 200:
                 return r.text
         except Exception as e:
-            print(f"[FETCH ERROR] {url}: {e}")
+            print(f"[ERROR] {url}: {e}")
         return None
 
 
     # =========================
-    # 🏛️ FUNCIÓN PÚBLICA
+    # FUENTES
     # =========================
+
     def funcion_publica(self):
-        url = "https://www.funcionpublica.gov.co/eva/es/gestornormativo"
-        html = self.fetch(url)
-        events = []
+        return self.parse_links("https://www.funcionpublica.gov.co/eva/es/gestornormativo")
 
-        if not html:
-            return events
-
-        soup = BeautifulSoup(html, "html.parser")
-        rows = soup.select("div.views-row")
-
-        for row in rows[:20]:
-            title_tag = row.select_one("h3, h2, a")
-
-            if not title_tag:
-                continue
-
-            title = title_tag.get_text(strip=True)
-
-            if self.is_legal_relevant(title):
-                events.append(self.build_event(title, url, "derecho"))
-
-        return events
-
-
-    # =========================
-    # ⚖️ CORTE CONSTITUCIONAL
-    # =========================
     def corte_constitucional(self):
-        url = "https://www.corteconstitucional.gov.co/relatoria/"
-        html = self.fetch(url)
-        events = []
+        return self.parse_table("https://www.corteconstitucional.gov.co/relatoria/")
 
-        if not html:
-            return events
-
-        soup = BeautifulSoup(html, "html.parser")
-        rows = soup.select("table tr")
-
-        for row in rows[:20]:
-            cols = row.find_all("td")
-
-            if len(cols) < 2:
-                continue
-
-            title = cols[1].get_text(strip=True)
-
-            if self.is_legal_relevant(title):
-                events.append(self.build_event(title, url, "derecho"))
-
-        return events
-
-
-    # =========================
-    # 📰 DIARIO OFICIAL
-    # =========================
-    def diario_oficial(self):
-        url = "https://www.imprenta.gov.co"
-        html = self.fetch(url)
-        events = []
-
-        if not html:
-            return events
-
-        soup = BeautifulSoup(html, "html.parser")
-
-        for tag in soup.find_all(["a", "p", "span"])[:50]:
-            text = tag.get_text(strip=True)
-
-            if not text:
-                continue
-
-            if self.is_legal_relevant(text):
-                events.append(self.build_event(text, url, "derecho"))
-
-        return events
-
-
-    # =========================
-    # 🏛️ SENADO
-    # =========================
     def senado(self):
-        url = "https://www.senado.gov.co/index.php/el-senado/noticias"
+        return self.parse_links("https://www.senado.gov.co/index.php/el-senado/noticias")
+
+    def dian(self):
+        return self.parse_table("https://www.dian.gov.co/Prensa/Paginas/Normatividad.aspx")
+
+
+    # =========================
+    # PARSERS
+    # =========================
+
+    def parse_links(self, url):
         html = self.fetch(url)
-        events = []
+        results = []
 
         if not html:
-            return events
+            return results
 
         soup = BeautifulSoup(html, "html.parser")
-        articles = soup.select("article, div.views-row")
+        links = soup.find_all("a")
 
-        for article in articles[:20]:
-            title_tag = article.find("a")
+        for link in links[:40]:
+            title = link.get_text(strip=True)
 
-            if not title_tag:
-                continue
+            if len(title) > 12:
+                results.append(self.build_event(title, url))
 
-            title = title_tag.get_text(strip=True)
-
-            if self.is_legal_relevant(title):
-                events.append(self.build_event(title, url, "derecho"))
-
-        return events
+        return results
 
 
-    # =========================
-    # 💰 DIAN (TRIBUTARIO)
-    # =========================
-    def dian(self):
-        url = "https://www.dian.gov.co/Prensa/Paginas/Normatividad.aspx"
+    def parse_table(self, url):
         html = self.fetch(url)
-        events = []
+        results = []
 
         if not html:
-            return events
+            return results
 
         soup = BeautifulSoup(html, "html.parser")
         rows = soup.select("table tr")
 
-        for row in rows[:20]:
+        for row in rows[:40]:
             cols = row.find_all("td")
 
             if len(cols) < 2:
@@ -165,44 +115,93 @@ class DerechoDetector(BaseDetector):
 
             title = cols[1].get_text(strip=True)
 
-            if self.is_legal_relevant(title):
-                events.append(self.build_event(title, url, "tributario"))
+            if len(title) > 12:
+                results.append(self.build_event(title, url))
 
-        return events
+        return results
 
 
     # =========================
-    # ⚖️ FILTRO JURÍDICO BASE
+    # FILTRO REALISTA
     # =========================
-    def is_legal_relevant(self, title):
-        if not title:
-            return False
 
-        title = title.lower()
-
+    def filter_relevant(self, events):
         keywords = [
             "ley",
             "decreto",
             "sentencia",
-            "resolución",
-            "acuerdo",
             "reforma",
             "estatuto",
-            "código",
-            "reglamenta",
-            "tributario",
-            "constitucional"
+            "código"
         ]
 
-        return any(k in title for k in keywords)
+        blacklist = [
+            "proyecto",
+            "noticia",
+            "evento",
+            "foro"
+        ]
+
+        filtered = []
+
+        for e in events:
+            title = e.title.lower()
+
+            if any(b in title for b in blacklist):
+                continue
+
+            if any(k in title for k in keywords):
+                filtered.append(e)
+
+        return filtered
 
 
     # =========================
-    # 🏗️ CREACIÓN DE EVENTO
+    # DEDUP
     # =========================
-    def build_event(self, title, source, faculty):
+
+    def remove_duplicates(self, events):
+        seen = set()
+        unique = []
+
+        for e in events:
+            key = self.hash_event(e)
+
+            if key not in seen:
+                seen.add(key)
+                unique.append(e)
+
+        return unique
+
+
+    # =========================
+    # HISTORIAL
+    # =========================
+
+    def load_history(self):
+        if not os.path.exists(HISTORY_FILE):
+            return set()
+
+        with open(HISTORY_FILE, "r") as f:
+            return set(json.load(f))
+
+
+    def save_history(self, history):
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(list(history), f)
+
+
+    def hash_event(self, event):
+        return hashlib.md5(event.title.lower().strip().encode()).hexdigest()
+
+
+    # =========================
+    # EVENTO
+    # =========================
+
+    def build_event(self, title, source):
         return DetectionEvent(
-            faculty=faculty,
+            faculty="derecho",
             jurisdiction="CO",
             source_url=source,
             title=title,
