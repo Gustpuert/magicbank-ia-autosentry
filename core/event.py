@@ -13,7 +13,7 @@ class DetectionEvent:
         publication_date,
         effective_date=None
     ):
-        self.id = str(uuid.uuid4())  # 🔥 ID único
+        self.id = str(uuid.uuid4())  # 🔥 Identificador único
 
         self.faculty = faculty
         self.jurisdiction = jurisdiction
@@ -23,8 +23,11 @@ class DetectionEvent:
         self.publication_date = publication_date
         self.effective_date = effective_date
 
-        self.detected_at = datetime.utcnow().isoformat()  # 🔥 ya normalizado
+        self.detected_at = datetime.utcnow().isoformat()
+
+        # 🔥 NUEVOS CAMPOS INTELIGENTES
         self.relevance = None
+        self.legal_type = None  # 👈 clave para inteligencia jurídica
 
     def to_dict(self):
         return {
@@ -37,5 +40,6 @@ class DetectionEvent:
             "publication_date": self.publication_date,
             "effective_date": self.effective_date,
             "detected_at": self.detected_at,
-            "relevance": self.relevance
+            "relevance": self.relevance,
+            "legal_type": self.legal_type
         }
