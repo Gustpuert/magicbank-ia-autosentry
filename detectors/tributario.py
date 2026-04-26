@@ -1,14 +1,22 @@
 import requests
 import hashlib
 import logging
+import time
+import json
+import re
+
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.parse import urljoin
+from dateutil import parser as date_parser
 
 from detectors.base import BaseDetector
 from core.event import DetectionEvent
 
 
+# =========================================================
+# LOGGING CONFIGURATION
+# =========================================================
 logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)s] %(asctime)s - %(message)s"
@@ -17,226 +25,407 @@ logging.basicConfig(
 
 class TributarioDetector(BaseDetector):
     """
-    MAGICBANK SUPREME — Tributary Normative Intelligence Detector
+    MAGICBANK SUPREME — Normative Intelligence Engine
 
-    Jurisdictions:
-    - CO (DIAN, MinHacienda, UGPP)
-    - US (IRS)
-    - CA (CRA)
-
-    Core Objectives:
-    - Official source prioritization
-    - Real normative relevance
-    - Event deduplication
-    - Severity classification
-    - Real publication date extraction
-    - Institutional logging
+    FEATURES:
+    - Multi-jurisdiction (CO / US / CA)
+    - Official source governance
+    - Retry + backoff
+    - Smart parsing
+    - Weighted keyword scoring
+    - Source-specific selectors
+    - Historical persistence
+    - Change detection
+    - Deduplication
+    - Severity governance
+    - Institutional-grade event architecture
     """
+
+    # =========================================================
+    # CONFIG
+    # =========================================================
+    HISTORY_FILE = "tributario_detector_history.json"
 
     TRIBUTARY_SOURCES = {
         "CO": [
             {
                 "name": "DIAN Normatividad",
                 "url": "https://www.dian.gov.co/normatividad/Paginas/default.aspx",
-                "source_type": "official"
+                "selectors": [
+                    "a",
+                    ".list-group-item",
+                    ".news-item a"
+                ]
             },
             {
                 "name": "DIAN Facturación Electrónica",
                 "url": "https://www.dian.gov.co/impuestos/factura-electronica",
-                "source_type": "official"
+                "selectors": [
+                    "a",
+                    ".news-item a"
+                ]
             }
         ],
         "US": [
             {
-                "name": "IRS News",
+                "name": "IRS Newsroom",
                 "url": "https://www.irs.gov/newsroom",
-                "source_type": "official"
+                "selectors": [
+                    "a",
+                    ".views-row a"
+                ]
             }
         ],
         "CA": [
             {
                 "name": "CRA News",
                 "url": "https://www.canada.ca/en/revenue-agency/news.html",
-                "source_type": "official"
+                "selectors": [
+                    "a",
+                    ".gcwnws a"
+                ]
             }
         ]
     }
 
     KEYWORDS = {
-        "critical": [
-            "reforma",
-            "resolución",
-            "decreto",
-            "ley",
-            "mandatory",
-            "obligatorio",
-            "irs update",
-            "compliance"
-        ],
-        "important": [
-            "impuesto",
-            "tributario",
-            "declaración",
-            "retención",
-            "facturación",
-            "tax",
-            "filing",
-            "withholding"
-        ],
-        "informational": [
-            "calendario",
-            "recordatorio",
-            "guidance",
-            "notice"
-        ]
+        "critical": {
+            "reforma": 10,
+            "resolución": 10,
+            "decreto": 10,
+            "ley": 10,
+            "mandatory": 9,
+            "obligatorio": 9,
+            "compliance": 8,
+            "sanction": 8,
+            "penalty": 8
+        },
+        "important": {
+            "impuesto": 7,
+            "tributario": 7,
+            "declaración": 7,
+            "retención": 7,
+            "facturación": 7,
+            "tax": 7,
+            "filing": 7,
+            "withholding": 7,
+            "irs": 6,
+            "vat": 6
+        },
+        "informational": {
+            "calendario": 4,
+            "recordatorio": 4,
+            "guidance": 4,
+            "notice": 4,
+            "boletín": 4
+        }
     }
 
+    # =========================================================
+    # INIT
+    # =========================================================
     def __init__(self):
         super().__init__()
-        self.seen_hashes = set()
 
-    # =========================
-    # MAIN DETECTION
-    # =========================
+        self.session = requests.Session()
+
+        self.session.headers.update({
+            "User-Agent": "MagicBankNormativeBot/2.0",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml"
+        })
+
+        self.seen_hashes = set()
+        self.history = self.load_history()
+
+    # =========================================================
+    # MAIN
+    # =========================================================
     def detect(self):
         events = []
 
         for jurisdiction, sources in self.TRIBUTARY_SOURCES.items():
             for source in sources:
-                events += self.detect_source(
-                    jurisdiction=jurisdiction,
-                    source_name=source["name"],
-                    source_url=source["url"]
+                events.extend(
+                    self.detect_source(
+                        jurisdiction=jurisdiction,
+                        source=source
+                    )
                 )
+
+        self.save_history()
 
         return events
 
-    # =========================
-    # FETCH LAYER
-    # =========================
-    def fetch(self, url):
-        headers = {
-            "User-Agent": "MagicBankNormativeBot/1.0"
-        }
+    # =========================================================
+    # FETCH WITH RETRY + BACKOFF
+    # =========================================================
+    def fetch(self, url, retries=3, backoff=2):
+        for attempt in range(retries):
+            try:
+                response = self.session.get(url, timeout=20)
 
-        try:
-            response = requests.get(url, headers=headers, timeout=15)
+                if response.status_code == 200:
+                    logging.info(f"Fetched successfully: {url}")
+                    return response.text
 
-            if response.status_code == 200:
-                logging.info(f"Fetched successfully: {url}")
-                return response.text
+                logging.warning(
+                    f"Status {response.status_code} for {url}"
+                )
 
-            logging.warning(f"Non-200 status ({response.status_code}) for {url}")
+            except requests.exceptions.Timeout:
+                logging.error(f"Timeout on {url}")
 
-        except requests.exceptions.Timeout:
-            logging.error(f"Timeout while fetching {url}")
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Request error on {url}: {e}")
 
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Request failed for {url}: {e}")
+            sleep_time = backoff ** attempt
+            logging.info(f"Retrying in {sleep_time}s...")
+            time.sleep(sleep_time)
 
         return None
 
-    # =========================
-    # SOURCE DETECTION
-    # =========================
-    def detect_source(self, jurisdiction, source_name, source_url):
-        html = self.fetch(source_url)
-        events = []
+    # =========================================================
+    # DETECT SOURCE
+    # =========================================================
+    def detect_source(self, jurisdiction, source):
+        html = self.fetch(source["url"])
 
         if not html:
-            return events
+            return []
 
         soup = BeautifulSoup(html, "html.parser")
+        events = []
 
-        for link in soup.find_all("a", href=True)[:100]:
-            title = link.get_text(strip=True)
-            href = urljoin(source_url, link["href"])
+        links = self.extract_links(soup, source)
+
+        for link in links:
+            title = link.get_text(" ", strip=True)
 
             if not title:
                 continue
 
-            relevance = self.evaluate_relevance(title, href)
+            href = urljoin(source["url"], link.get("href", ""))
 
-            if not relevance:
+            score, severity = self.evaluate_relevance(title, href)
+
+            if score == 0:
                 continue
 
             event_hash = self.generate_hash(title, href)
 
-            if event_hash in self.seen_hashes:
+            if self.is_duplicate(event_hash):
                 continue
-
-            self.seen_hashes.add(event_hash)
 
             publication_date = self.extract_publication_date(link)
 
-            events.append(
-                self.build_event(
-                    title=title,
-                    source=href,
-                    jurisdiction=jurisdiction,
-                    severity=relevance,
-                    publication_date=publication_date,
-                    source_name=source_name
-                )
+            change_type = self.detect_change_type(
+                event_hash,
+                title,
+                publication_date
+            )
+
+            event = self.build_event(
+                title=title,
+                source=href,
+                jurisdiction=jurisdiction,
+                severity=severity,
+                score=score,
+                publication_date=publication_date,
+                source_name=source["name"],
+                change_type=change_type
+            )
+
+            events.append(event)
+
+            self.register_event(
+                event_hash,
+                title,
+                publication_date
             )
 
         return events
 
-    # =========================
+    # =========================================================
+    # SMART LINK EXTRACTION
+    # =========================================================
+    def extract_links(self, soup, source):
+        collected = []
+
+        for selector in source.get("selectors", ["a"]):
+            try:
+                collected.extend(
+                    soup.select(selector)
+                )
+            except Exception:
+                continue
+
+        unique_links = []
+
+        seen = set()
+
+        for link in collected:
+            href = link.get("href")
+
+            if not href:
+                continue
+
+            if href in seen:
+                continue
+
+            seen.add(href)
+            unique_links.append(link)
+
+        return unique_links[:150]
+
+    # =========================================================
     # RELEVANCE ENGINE
-    # =========================
+    # =========================================================
     def evaluate_relevance(self, title, href):
         combined = f"{title} {href}".lower()
 
-        for severity, keywords in self.KEYWORDS.items():
-            if any(keyword in combined for keyword in keywords):
-                return severity
+        best_score = 0
+        best_severity = None
 
-        return None
+        for severity, words in self.KEYWORDS.items():
+            score = 0
 
-    # =========================
-    # DATE EXTRACTION
-    # =========================
+            for keyword, weight in words.items():
+                if re.search(rf"\b{re.escape(keyword)}\b", combined):
+                    score += weight
+
+            if score > best_score:
+                best_score = score
+                best_severity = severity
+
+        return best_score, best_severity
+
+    # =========================================================
+    # DATE PARSER
+    # =========================================================
     def extract_publication_date(self, link):
-        """
-        Attempts:
-        1. datetime attr
-        2. nearby text
-        3. fallback to detection date
-        """
+        candidates = []
 
         if link.has_attr("datetime"):
-            return link["datetime"]
+            candidates.append(link["datetime"])
 
         parent_text = link.parent.get_text(" ", strip=True)
+        candidates.append(parent_text)
 
-        for token in parent_text.split():
+        for candidate in candidates:
             try:
-                parsed = datetime.fromisoformat(token)
+                parsed = date_parser.parse(
+                    candidate,
+                    fuzzy=True
+                )
+
                 return parsed.date().isoformat()
+
             except Exception:
                 continue
 
         return datetime.utcnow().date().isoformat()
 
-    # =========================
-    # HASH / DEDUP
-    # =========================
+    # =========================================================
+    # HASH
+    # =========================================================
     def generate_hash(self, title, source):
         raw = f"{title}|{source}"
-        return hashlib.sha256(raw.encode()).hexdigest()
+        return hashlib.sha256(
+            raw.encode("utf-8")
+        ).hexdigest()
 
-    # =========================
+    # =========================================================
+    # DUPLICATION
+    # =========================================================
+    def is_duplicate(self, event_hash):
+        return event_hash in self.seen_hashes
+
+    # =========================================================
+    # CHANGE DETECTION
+    # =========================================================
+    def detect_change_type(
+        self,
+        event_hash,
+        title,
+        publication_date
+    ):
+        previous = self.history.get(event_hash)
+
+        if not previous:
+            return "new"
+
+        if (
+            previous.get("title") != title
+            or previous.get("publication_date") != publication_date
+        ):
+            return "updated"
+
+        return "existing"
+
+    # =========================================================
+    # HISTORY REGISTRATION
+    # =========================================================
+    def register_event(
+        self,
+        event_hash,
+        title,
+        publication_date
+    ):
+        self.seen_hashes.add(event_hash)
+
+        self.history[event_hash] = {
+            "title": title,
+            "publication_date": publication_date,
+            "last_seen": datetime.utcnow().isoformat()
+        }
+
+    # =========================================================
+    # HISTORY LOAD
+    # =========================================================
+    def load_history(self):
+        try:
+            with open(self.HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+        except Exception:
+            return {}
+
+    # =========================================================
+    # HISTORY SAVE
+    # =========================================================
+    def save_history(self):
+        try:
+            with open(
+                self.HISTORY_FILE,
+                "w",
+                encoding="utf-8"
+            ) as f:
+                json.dump(
+                    self.history,
+                    f,
+                    indent=2,
+                    ensure_ascii=False
+                )
+
+        except Exception as e:
+            logging.error(
+                f"Failed to save history: {e}"
+            )
+
+    # =========================================================
     # EVENT BUILDER
-    # =========================
+    # =========================================================
     def build_event(
         self,
         title,
         source,
         jurisdiction,
         severity,
+        score,
         publication_date,
-        source_name
+        source_name,
+        change_type
     ):
         document_type_map = {
             "critical": "Critical Tributary Update",
@@ -255,21 +444,36 @@ class TributarioDetector(BaseDetector):
                 "Tributary Update"
             ),
             severity=severity,
+            impact_score=score,
             publication_date=publication_date,
-            detection_date=datetime.utcnow().isoformat()
+            detection_date=datetime.utcnow().isoformat(),
+            change_type=change_type
         )
 
-    # =========================
-    # OPTIONAL: IMPACT SCORE
-    # =========================
+    # =========================================================
+    # GOVERNANCE SCORING
+    # =========================================================
     def score_event(self, event):
-        severity_scores = {
+        base_scores = {
             "critical": 100,
             "important": 70,
             "informational": 40
         }
 
-        return severity_scores.get(
+        score = base_scores.get(
             getattr(event, "severity", "informational"),
             40
         )
+
+        score += min(
+            getattr(event, "impact_score", 0),
+            25
+        )
+
+        if getattr(event, "change_type", "") == "new":
+            score += 10
+
+        elif getattr(event, "change_type", "") == "updated":
+            score += 5
+
+        return min(score, 100)
